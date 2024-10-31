@@ -25,5 +25,7 @@ namespace Fall2024_Assignment3_sbillante.Models
         public byte[]? Poster { get; set; }
 
         public string[]? Reviews { get; set; }
+
+        public double[]? ReviewsSentiment { get; set; }
     }
 }

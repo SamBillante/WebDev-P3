@@ -22,5 +22,7 @@ namespace Fall2024_Assignment3_sbillante.Models
         public byte[]? Photo { get; set; }
 
         public string[]? Tweets { get; set; }
+
+        public double[]? TweetsSentiment { get; set; }
     }
 }

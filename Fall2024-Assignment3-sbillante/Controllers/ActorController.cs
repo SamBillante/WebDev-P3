@@ -11,10 +11,12 @@ using OpenAI.Chat;
 using Microsoft.CodeAnalysis;
 using Newtonsoft.Json;
 using System.Text;
+using VaderSharp2;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace Fall2024_Assignment3_sbillante.Controllers
 {
-    public class ActorController : AIController
+    public class ActorController : Controller
     {
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
@@ -25,43 +27,42 @@ namespace Fall2024_Assignment3_sbillante.Controllers
             _configuration = configuration;
         }
 
-        public class AIController() : Controller
+        
+        public async Task<string> CallChatGPT(string prompt)
         {
-            public async Task<string> CallChatGPT(string prompt, IConfiguration config)
+            using (var client = new HttpClient())
             {
-                using (var client = new HttpClient())
+                client.DefaultRequestHeaders.Add("api-key", _configuration["OpenAI-Key"]);
+
+                var requestBody = new
                 {
-                    client.DefaultRequestHeaders.Add("api-key", config["OpenAI-Key"]);
-
-                    var requestBody = new
+                    messages = new[]
                     {
-                        messages = new[]
-                        {
-                        new { role = "system", content = "Take the name of an actor as input. return a string of twenty simulated tweets from the actor and delimit each with ONLY a | character. Do NOT use any other special characters including quotes. Do NOT number the tweets. Only include formatted output. output will be parsed with String.Split('|')"},
-                        new { role = "user", content = prompt }
-                    },
-                        max_tokens = 950
-                    };
+                    new { role = "system", content = "Take the name of an actor as input. return a string of twenty simulated tweets from the actor and delimit each with ONLY a | character. Do NOT use any other special characters including quotes. Do NOT number the tweets. Only include formatted output. output will be parsed with String.Split('|')"},
+                    new { role = "user", content = prompt }
+                },
+                    max_tokens = 950
+                };
 
-                    var json = JsonConvert.SerializeObject(requestBody);
-                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var json = JsonConvert.SerializeObject(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                    var response = await client.PostAsync($"{config["OpenAI-Endpoint"]}", content);
+                var response = await client.PostAsync($"{_configuration["OpenAI-Endpoint"]}", content);
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseContent = await response.Content.ReadAsStringAsync();
-                        var result = JsonConvert.DeserializeObject<dynamic>(responseContent);
-                        return result.choices[0].message.content;
-                    }
-                    else
-                    {
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        throw new Exception($"Request to Azure OpenAI failed: {errorContent}");
-                    }
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var result = JsonConvert.DeserializeObject<dynamic>(responseContent);
+                    return result.choices[0].message.content;
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"Request to Azure OpenAI failed: {errorContent}");
                 }
             }
         }
+        
 
         // GET: Actor
         public async Task<IActionResult> Index()
@@ -111,8 +112,18 @@ namespace Fall2024_Assignment3_sbillante.Controllers
 
                 //call chatgpt to generate tweets, then add to the actor
                 string prompt = $"{actor.Name}";
-                string rawTweets = await CallChatGPT(prompt, _configuration);
+                string rawTweets = await CallChatGPT(prompt);
                 actor.Tweets = rawTweets.Split('|', 20);
+
+                var analyzer = new SentimentIntensityAnalyzer();
+                actor.TweetsSentiment = new double[20];
+
+                for (int i = 0; i < 20; i++)
+                {
+                    var results = analyzer.PolarityScores(actor.Tweets[i]);
+
+                    actor.TweetsSentiment[i] = results.Compound;
+                }
 
                 _context.Add(actor);
                 await _context.SaveChangesAsync();

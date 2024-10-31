@@ -12,5 +12,6 @@ namespace Fall2024_Assignment3_sbillante.Data
         }
         public DbSet<Fall2024_Assignment3_sbillante.Models.Movie> Movie { get; set; } = default!;
         public DbSet<Fall2024_Assignment3_sbillante.Models.Actor> Actor { get; set; } = default!;
+        public DbSet<Fall2024_Assignment3_sbillante.Models.MovieActor> MovieActor { get; set; } = default!;
     }
 }

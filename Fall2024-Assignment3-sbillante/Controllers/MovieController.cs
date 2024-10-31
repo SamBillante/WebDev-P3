@@ -10,10 +10,11 @@ using Fall2024_Assignment3_sbillante.Models;
 using System.Numerics;
 using Newtonsoft.Json;
 using System.Text;
+using VaderSharp2;
 
 namespace Fall2024_Assignment3_sbillante.Controllers
 {
-    public class MovieController : AIController
+    public class MovieController : Controller
     {
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
@@ -97,7 +98,15 @@ namespace Fall2024_Assignment3_sbillante.Controllers
                 return NotFound();
             }
 
-            return View(movie);
+            var actors = await _context.MovieActor
+                .Include(ma => ma.Actor)
+                .Where(ma => ma.MovieId == movie.Id)
+                .Select(ma => ma.Actor)
+                .ToListAsync();
+
+            var vm = new MovieDetailsViewModel(movie, actors);
+
+            return View(vm);
         }
 
         // GET: Movie/Create
@@ -122,9 +131,19 @@ namespace Fall2024_Assignment3_sbillante.Controllers
                     movie.Poster = memoryStream.ToArray();
                 }
 
-                string prompt = $"Generate twenty 30-70 word reviews of the movie {movie.Title} ({movie.Year})";
-                string rawReviews = await CallChatGPT(prompt, _configuration);
-                movie.Reviews = rawReviews.Split('|', 20);
+                string prompt = $"Generate ten 30-70 word reviews of the movie {movie.Title} ({movie.Year})";
+                string rawReviews = await CallChatGPT(prompt);
+                movie.Reviews = rawReviews.Split('|', 10);
+
+                var analyzer = new SentimentIntensityAnalyzer();
+                movie.ReviewsSentiment = new double[10];
+
+                for (int i = 0; i < 10; i++)
+                {
+                    var results = analyzer.PolarityScores(movie.Reviews[i]);
+
+                    movie.ReviewsSentiment[i] = results.Compound;
+                }
 
                 _context.Add(movie);
                 await _context.SaveChangesAsync();
