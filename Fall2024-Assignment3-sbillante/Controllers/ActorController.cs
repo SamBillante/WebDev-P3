@@ -7,16 +7,60 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Fall2024_Assignment3_sbillante.Data;
 using Fall2024_Assignment3_sbillante.Models;
+using OpenAI.Chat;
+using Microsoft.CodeAnalysis;
+using Newtonsoft.Json;
+using System.Text;
 
 namespace Fall2024_Assignment3_sbillante.Controllers
 {
-    public class ActorController : Controller
+    public class ActorController : AIController
     {
         private readonly ApplicationDbContext _context;
+        private readonly IConfiguration _configuration;
 
-        public ActorController(ApplicationDbContext context)
+        public ActorController(ApplicationDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
+        }
+
+        public class AIController() : Controller
+        {
+            public async Task<string> CallChatGPT(string prompt, IConfiguration config)
+            {
+                using (var client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("api-key", config["OpenAI-Key"]);
+
+                    var requestBody = new
+                    {
+                        messages = new[]
+                        {
+                        new { role = "system", content = "Take the name of an actor as input. return a string of twenty simulated tweets from the actor and delimit each with ONLY a | character. Do NOT use any other special characters including quotes. Do NOT number the tweets. Only include formatted output. output will be parsed with String.Split('|')"},
+                        new { role = "user", content = prompt }
+                    },
+                        max_tokens = 950
+                    };
+
+                    var json = JsonConvert.SerializeObject(requestBody);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var response = await client.PostAsync($"{config["OpenAI-Endpoint"]}", content);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseContent = await response.Content.ReadAsStringAsync();
+                        var result = JsonConvert.DeserializeObject<dynamic>(responseContent);
+                        return result.choices[0].message.content;
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        throw new Exception($"Request to Azure OpenAI failed: {errorContent}");
+                    }
+                }
+            }
         }
 
         // GET: Actor
@@ -43,7 +87,7 @@ namespace Fall2024_Assignment3_sbillante.Controllers
             return View(actor);
         }
 
-        // GET: Actor/Create
+        // GET: Actor/Create     
         public IActionResult Create()
         {
             return View();
@@ -54,10 +98,22 @@ namespace Fall2024_Assignment3_sbillante.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Name,Link,Gender,Age,Photo")] Actor actor)
+        public async Task<IActionResult> Create([Bind("Id,Name,Link,Gender,Age")] Actor actor, IFormFile? photo)
         {
             if (ModelState.IsValid)
             {
+                if (photo != null && photo.Length > 0)
+                {
+                    using var memoryStream = new MemoryStream();
+                    photo.CopyTo(memoryStream);
+                    actor.Photo = memoryStream.ToArray();
+                }
+
+                //call chatgpt to generate tweets, then add to the actor
+                string prompt = $"{actor.Name}";
+                string rawTweets = await CallChatGPT(prompt, _configuration);
+                actor.Tweets = rawTweets.Split('|', 20);
+
                 _context.Add(actor);
                 await _context.SaveChangesAsync();
                 return RedirectToAction(nameof(Index));
@@ -86,12 +142,25 @@ namespace Fall2024_Assignment3_sbillante.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Link,Gender,Age,Photo")] Actor actor)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Link,Gender,Age")] Actor actor, IFormFile? Photo)
         {
             if (id != actor.Id)
             {
                 return NotFound();
             }
+
+            if (Photo != null)
+            {
+                using var memoryStream = new MemoryStream();
+                await Photo.CopyToAsync(memoryStream);
+                actor.Photo = memoryStream.ToArray(); // Save the new image
+            }
+            else
+            {
+                var existingActor = await _context.Actor.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id);
+                actor.Photo = existingActor.Photo; // Keep the existing photo
+            }
+
 
             if (ModelState.IsValid)
             {

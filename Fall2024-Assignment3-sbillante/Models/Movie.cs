@@ -23,5 +23,7 @@ namespace Fall2024_Assignment3_sbillante.Models
         public int Year { get; set; }
 
         public byte[]? Poster { get; set; }
+
+        public string[]? Reviews { get; set; }
     }
 }

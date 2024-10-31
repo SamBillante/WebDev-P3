@@ -19,7 +19,8 @@ namespace Fall2024_Assignment3_sbillante.Models
         [Required]
         public int Age { get; set; }
 
-        [Required]
-        public byte[] Photo { get; set; }
+        public byte[]? Photo { get; set; }
+
+        public string[]? Tweets { get; set; }
     }
 }
